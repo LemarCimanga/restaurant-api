@@ -1,6 +1,8 @@
 const User = require('../models/User');
+const MasterCode = require('../models/MasterCode');
 const { generateToken } = require('../config/jwt');
 const { ajouterLog } = require('../services/auditService');
+const bcrypt = require('bcryptjs');
 
 const MAX_ATTEMPTS = 5;
 const LOCK_DURATION = 30;
@@ -141,6 +143,74 @@ const authController = {
       res.status(500).json({
         success: false,
         error: 'Erreur lors de la connexion'
+      });
+    }
+  },
+
+  async register(req, res) {
+    try {
+      const { nom, postnom, prenom, role, password, master_code } = req.body;
+
+      if (!nom || !postnom || !prenom || !role || !password || !master_code) {
+        return res.status(400).json({
+          success: false,
+          error: 'Tous les champs sont requis'
+        });
+      }
+
+      const isValidMaster = await MasterCode.verify(master_code);
+      if (!isValidMaster) {
+        return res.status(400).json({
+          success: false,
+          error: 'Code master invalide'
+        });
+      }
+
+      const matricule = await User.generateMatricule();
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      const user = await User.create({
+        nom,
+        postnom,
+        prenom,
+        matricule,
+        mot_de_passe: hashedPassword,
+        role,
+        statut: 'actif',
+        photo: ''
+      });
+
+      await ajouterLog({
+        utilisateur_id: user.id,
+        utilisateur_nom: `${user.nom} ${user.prenom}`,
+        action: 'INSERT',
+        niveau: 'INFO',
+        table_concernee: 'utilisateurs',
+        enregistrement_id: user.id,
+        details: 'Nouvel utilisateur inscrit',
+        ip_address: req.ip,
+        user_agent: req.headers['user-agent']
+      });
+
+      res.status(201).json({
+        success: true,
+        message: 'Inscription reussie',
+        user: {
+          id: user.id,
+          nom: user.nom,
+          postnom: user.postnom,
+          prenom: user.prenom,
+          matricule: user.matricule,
+          role: user.role
+        }
+      });
+
+    } catch (error) {
+      console.error('Erreur inscription:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Erreur lors de l\'inscription'
       });
     }
   },
