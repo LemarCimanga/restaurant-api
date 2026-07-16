@@ -130,6 +130,45 @@ class User {
     return result.rows[0];
   }
 
+  static async updatePhoto(id, photo) {
+    const query = `
+      UPDATE utilisateurs 
+      SET photo = $1
+      WHERE id = $2
+      RETURNING id, nom, prenom, photo
+    `;
+    const result = await pool.query(query, [photo, id]);
+    return result.rows[0];
+  }
+
+  static async updateProfile(id, data) {
+    const { nom, postnom, prenom, numero_telephone } = data;
+    
+    const query = `
+      UPDATE utilisateurs 
+      SET nom = COALESCE($1, nom),
+          postnom = COALESCE($2, postnom),
+          prenom = COALESCE($3, prenom),
+          numero_telephone = COALESCE($4, numero_telephone)
+      WHERE id = $5
+      RETURNING id, nom, postnom, prenom, matricule, numero_telephone,
+                role, statut, photo, derniere_connexion, created_at
+    `;
+    const result = await pool.query(query, [nom, postnom, prenom, numero_telephone, id]);
+    return result.rows[0];
+  }
+
+  static async archive(id) {
+    const query = `
+      UPDATE utilisateurs 
+      SET statut = 'archive'
+      WHERE id = $1
+      RETURNING id, nom, prenom
+    `;
+    const result = await pool.query(query, [id]);
+    return result.rows[0];
+  }
+
   static async findAll(options = {}) {
     const { limit = 50, offset = 0, role, statut } = options;
     
@@ -159,17 +198,6 @@ class User {
 
     const result = await pool.query(query, values);
     return result.rows;
-  }
-
-  static async archive(id) {
-    const query = `
-      UPDATE utilisateurs 
-      SET statut = 'archive'
-      WHERE id = $1
-      RETURNING id, nom, prenom
-    `;
-    const result = await pool.query(query, [id]);
-    return result.rows[0];
   }
 }
 

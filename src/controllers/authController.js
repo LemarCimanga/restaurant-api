@@ -1,6 +1,6 @@
 const User = require('../models/User');
 const MasterCode = require('../models/MasterCode');
-const { generateToken } = require('../config/jwt');
+const { generateToken, verifyToken } = require('../config/jwt');
 const { ajouterLog } = require('../services/auditService');
 const bcrypt = require('bcryptjs');
 
@@ -8,6 +8,9 @@ const MAX_ATTEMPTS = 5;
 const LOCK_DURATION = 30;
 
 const authController = {
+  // ============================================================
+  // LOGIN
+  // ============================================================
   async login(req, res) {
     try {
       const { matricule, mot_de_passe } = req.body;
@@ -147,6 +150,9 @@ const authController = {
     }
   },
 
+  // ============================================================
+  // REGISTER
+  // ============================================================
   async register(req, res) {
     try {
       const { nom, postnom, prenom, role, password, master_code } = req.body;
@@ -215,6 +221,9 @@ const authController = {
     }
   },
 
+  // ============================================================
+  // LOGOUT
+  // ============================================================
   async logout(req, res) {
     try {
       if (req.user) {
@@ -241,6 +250,9 @@ const authController = {
     }
   },
 
+  // ============================================================
+  // GET PROFILE
+  // ============================================================
   async getProfile(req, res) {
     try {
       const user = await User.findById(req.user.id);
@@ -264,6 +276,9 @@ const authController = {
     }
   },
 
+  // ============================================================
+  // CHANGE PASSWORD
+  // ============================================================
   async changePassword(req, res) {
     try {
       const { ancien_mot_de_passe, nouveau_mot_de_passe } = req.body;
@@ -310,6 +325,199 @@ const authController = {
       res.status(500).json({
         success: false,
         error: 'Erreur lors du changement de mot de passe'
+      });
+    }
+  },
+
+  // ============================================================
+  // UPDATE PHOTO
+  // ============================================================
+  async updatePhoto(req, res) {
+    try {
+      const { photo } = req.body;
+      const userId = req.user.id;
+
+      if (!photo) {
+        return res.status(400).json({
+          success: false,
+          error: 'Photo requise'
+        });
+      }
+
+      await User.updatePhoto(userId, photo);
+
+      const user = await User.findById(userId);
+
+      await ajouterLog({
+        utilisateur_id: userId,
+        utilisateur_nom: req.user.nom,
+        action: 'UPDATE',
+        niveau: 'INFO',
+        table_concernee: 'utilisateurs',
+        enregistrement_id: userId,
+        details: 'Mise à jour de la photo de profil',
+        ip_address: req.ip
+      });
+
+      res.json({
+        success: true,
+        message: 'Photo mise à jour avec succès',
+        user
+      });
+
+    } catch (error) {
+      console.error('Erreur updatePhoto:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Erreur lors de la mise à jour de la photo'
+      });
+    }
+  },
+
+  // ============================================================
+  // UPDATE PROFILE
+  // ============================================================
+  async updateProfile(req, res) {
+    try {
+      const { nom, postnom, prenom, numero_telephone } = req.body;
+      const userId = req.user.id;
+
+      const user = await User.updateProfile(userId, {
+        nom,
+        postnom,
+        prenom,
+        numero_telephone
+      });
+
+      await ajouterLog({
+        utilisateur_id: userId,
+        utilisateur_nom: req.user.nom,
+        action: 'UPDATE',
+        niveau: 'INFO',
+        table_concernee: 'utilisateurs',
+        enregistrement_id: userId,
+        details: 'Mise à jour du profil',
+        ip_address: req.ip
+      });
+
+      res.json({
+        success: true,
+        message: 'Profil mis à jour avec succès',
+        user
+      });
+
+    } catch (error) {
+      console.error('Erreur updateProfile:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Erreur lors de la mise à jour du profil'
+      });
+    }
+  },
+
+  // ============================================================
+  // DELETE ACCOUNT
+  // ============================================================
+  async deleteAccount(req, res) {
+    try {
+      const userId = req.user.id;
+
+      await User.archive(userId);
+
+      await ajouterLog({
+        utilisateur_id: userId,
+        utilisateur_nom: req.user.nom,
+        action: 'DELETE',
+        niveau: 'CRITICAL',
+        table_concernee: 'utilisateurs',
+        enregistrement_id: userId,
+        details: 'Compte supprimé (archivé)',
+        ip_address: req.ip
+      });
+
+      res.json({
+        success: true,
+        message: 'Compte supprimé avec succès'
+      });
+
+    } catch (error) {
+      console.error('Erreur deleteAccount:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Erreur lors de la suppression du compte'
+      });
+    }
+  },
+
+  // ============================================================
+  // REFRESH TOKEN
+  // ============================================================
+  async refreshToken(req, res) {
+    try {
+      const user = await User.findById(req.user.id);
+      const newToken = generateToken(user);
+
+      res.json({
+        success: true,
+        token: newToken
+      });
+
+    } catch (error) {
+      console.error('Erreur refreshToken:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Erreur lors du rafraîchissement du token'
+      });
+    }
+  },
+
+  // ============================================================
+  // VERIFY TOKEN
+  // ============================================================
+  async verifyToken(req, res) {
+    try {
+      res.json({
+        success: true,
+        valid: true,
+        user: req.user
+      });
+
+    } catch (error) {
+      console.error('Erreur verifyToken:', error);
+      res.status(500).json({
+        success: false,
+        valid: false,
+        error: 'Token invalide'
+      });
+    }
+  },
+
+  // ============================================================
+  // VERIFY MASTER CODE
+  // ============================================================
+  async verifyMasterCode(req, res) {
+    try {
+      const { master_code } = req.body;
+
+      if (!master_code) {
+        return res.status(400).json({
+          success: false,
+          error: 'Code master requis'
+        });
+      }
+
+      const isValid = await MasterCode.verify(master_code);
+
+      res.json({
+        success: true,
+        valid: isValid
+      });
+
+    } catch (error) {
+      console.error('Erreur verifyMasterCode:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Erreur lors de la vérification du code master'
       });
     }
   }
