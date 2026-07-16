@@ -7,6 +7,10 @@ const rateLimit = require('express-rate-limit');
 
 const app = express();
 
+// ============ TRUST PROXY (RENDER) ============
+// ✅ AJOUTER CETTE LIGNE ICI
+app.set('trust proxy', true);
+
 // ============ MIDDLEWARES ============
 
 // Sécurité
