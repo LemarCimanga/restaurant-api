@@ -8,8 +8,8 @@ const rateLimit = require('express-rate-limit');
 const app = express();
 
 // ============ TRUST PROXY (RENDER) ============
-// ✅ AJOUTER CETTE LIGNE ICI
-app.set('trust proxy', true);
+// ✅ Configuration optimale pour Render
+app.set('trust proxy', 1); // 1 proxy devant l'application
 
 // ============ MIDDLEWARES ============
 
@@ -26,10 +26,12 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Rate Limiting - Protection contre les attaques
+// Rate Limiting - Protection contre les attaques (configuré pour Render)
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // 100 requêtes par IP
+  max: 100, // 100 requêtes par IP
+  trustProxy: true, // ✅ Indique que le proxy est fiable
+  skip: (req) => req.ip === '127.0.0.1' // ✅ Ignorer les requêtes locales
 });
 app.use('/api', limiter);
 
