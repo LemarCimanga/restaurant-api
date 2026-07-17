@@ -36,7 +36,8 @@ class VenteResto {
   static async findById(id) {
     const query = `
       SELECT v.*, 
-             COALESCE(u.nom, '') as serveur_nom_complet
+             COALESCE(u.nom, '') as serveur_nom_complet,
+             (SELECT COUNT(*) FROM details_ventes_resto WHERE vente_id = v.id_facture_rst) as nombre_articles
       FROM ventes_resto v
       LEFT JOIN utilisateurs u ON v.serveur_id = u.id
       WHERE v.id_facture_rst = $1
@@ -156,6 +157,36 @@ class VenteResto {
     return result.rows[0] || null;
   }
 
+  // === NOUVELLE MÉTHODE : Mettre à jour le statut avec gestion cuisine ===
+  static async updateStatusAvecCuisine(id, statut, agent_id = null) {
+    let query = `
+      UPDATE ventes_resto 
+      SET statut = $1
+    `;
+    const values = [statut];
+    let paramCount = 2;
+
+    if (statut === 'en_preparation' && agent_id) {
+      query += `, agent_cuisine_id = $${paramCount}, debut_preparation = CURRENT_TIMESTAMP`;
+      values.push(agent_id);
+      paramCount++;
+    }
+
+    if (statut === 'en_attente_paiement') {
+      query += `, fin_preparation = CURRENT_TIMESTAMP, temps_preparation = EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - debut_preparation)) / 60`;
+    }
+
+    if (statut === 'paye') {
+      query += `, paiement_at = CURRENT_TIMESTAMP`;
+    }
+
+    query += ` WHERE id_facture_rst = $${paramCount} RETURNING *`;
+    values.push(id);
+
+    const result = await pool.query(query, values);
+    return result.rows[0] || null;
+  }
+
   static async getVentesDuJour() {
     const query = `
       SELECT * FROM ventes_resto 
@@ -196,6 +227,37 @@ class VenteResto {
 
     const result = await pool.query(query, values);
     return result.rows;
+  }
+
+  // === NOUVELLE MÉTHODE : Statistiques pour la cuisine ===
+  static async getStatsCuisine(date_debut = null, date_fin = null) {
+    let query = `
+      SELECT 
+        COUNT(*) as total_commandes,
+        SUM(CASE WHEN statut = 'en_attente' THEN 1 ELSE 0 END) as en_attente,
+        SUM(CASE WHEN statut = 'en_preparation' THEN 1 ELSE 0 END) as en_preparation,
+        SUM(CASE WHEN statut = 'en_attente_paiement' THEN 1 ELSE 0 END) as pretes,
+        AVG(temps_preparation) as temps_moyen_preparation
+      FROM ventes_resto
+      WHERE plat_id IS NOT NULL
+    `;
+    const values = [];
+    let paramCount = 1;
+
+    if (date_debut) {
+      query += ` AND prise_commande_at >= $${paramCount}`;
+      values.push(date_debut);
+      paramCount++;
+    }
+
+    if (date_fin) {
+      query += ` AND prise_commande_at <= $${paramCount}`;
+      values.push(date_fin);
+      paramCount++;
+    }
+
+    const result = await pool.query(query, values);
+    return result.rows[0] || {};
   }
 
   static async delete(id) {

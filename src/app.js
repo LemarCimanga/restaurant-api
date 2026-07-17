@@ -63,6 +63,9 @@ app.use('/api/parametres', require('./routes/parametreRoutes'));
 // Routes de l'audit
 app.use('/api/audit', require('./routes/auditRoutes'));
 
+// Routes des plats et cuisine  ← NOUVEAU
+app.use('/api/plats', require('./routes/platRoutes'));
+
 // Route de santé (health check)
 app.get('/health', (req, res) => {
   res.status(200).json({

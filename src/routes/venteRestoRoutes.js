@@ -65,6 +65,29 @@ router.get(
   venteRestoController.getStatsParServeur
 );
 
+// ============ ROUTES CUISINE (NOUVELLES) ============
+
+// Recuperer les statistiques cuisine (agent cuisine, admin, gerant)
+router.get(
+  '/stats/cuisine',
+  authorize(['agent cuisine', 'admin', 'gerant']),
+  venteRestoController.getStatsCuisine
+);
+
+// Demarrer la preparation d'une commande (agent cuisine)
+router.patch(
+  '/:id/demarrer',
+  authorize(['agent cuisine', 'admin', 'gerant']),
+  venteRestoController.demarrerPreparation
+);
+
+// Terminer la preparation d'une commande (agent cuisine)
+router.patch(
+  '/:id/terminer',
+  authorize(['agent cuisine', 'admin', 'gerant']),
+  venteRestoController.terminerPreparation
+);
+
 // Supprimer une commande (admin seulement)
 router.delete(
   '/:id',

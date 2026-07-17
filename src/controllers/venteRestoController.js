@@ -1,6 +1,8 @@
 const VenteResto = require('../models/VenteResto');
 const StockBoisson = require('../models/StockBoisson');
 const StockNourriture = require('../models/StockNourriture');
+const Plat = require('../models/Plat');
+const pool = require('../config/database');
 const { ajouterLog } = require('../services/auditService');
 
 const venteRestoController = {
@@ -121,6 +123,7 @@ const venteRestoController = {
     }
   },
 
+  // === UPDATE STATUS AVEC GESTION CUISINE ===
   async updateStatus(req, res) {
     try {
       const { id } = req.params;
@@ -141,18 +144,22 @@ const venteRestoController = {
         });
       }
 
-      // Si le statut est 'paye', verifier les stocks
-      if (statut === 'paye' && vente.statut === 'en_preparation') {
-        // La verification de stock est geree par le trigger PostgreSQL
-        // On laisse la base de donnees faire son travail
+      // Vérifier les stocks si passage à 'paye'
+      if (statut === 'paye' && vente.statut === 'en_attente_paiement') {
+        // La vérification de stock est gérée par le trigger PostgreSQL
       }
 
-      const resultat = await VenteResto.updateStatus(
-        id, 
-        statut, 
-        req.user.id, 
-        req.user.nom
-      );
+      // Utiliser la nouvelle méthode avec gestion cuisine si nécessaire
+      let resultat;
+      if (statut === 'en_preparation') {
+        // L'agent cuisine démarre la préparation
+        resultat = await VenteResto.updateStatusAvecCuisine(id, statut, req.user.id);
+      } else if (statut === 'en_attente_paiement') {
+        // L'agent cuisine termine la préparation
+        resultat = await VenteResto.updateStatusAvecCuisine(id, statut);
+      } else {
+        resultat = await VenteResto.updateStatus(id, statut, req.user.id, req.user.nom);
+      }
       
       await ajouterLog({
         utilisateur_id: req.user.id,
@@ -175,7 +182,6 @@ const venteRestoController = {
     } catch (error) {
       console.error('Erreur mise a jour statut vente resto:', error);
       
-      // Verifier si c'est une erreur de stock
       if (error.message && error.message.includes('Stock insuffisant')) {
         return res.status(400).json({
           success: false,
@@ -222,6 +228,119 @@ const venteRestoController = {
       res.status(500).json({
         success: false,
         error: 'Erreur lors de la recuperation des statistiques'
+      });
+    }
+  },
+
+  // === NOUVEAU : Statistiques cuisine ===
+  async getStatsCuisine(req, res) {
+    try {
+      const { date_debut, date_fin } = req.query;
+      const stats = await VenteResto.getStatsCuisine(date_debut, date_fin);
+      
+      res.json({
+        success: true,
+        data: stats
+      });
+    } catch (error) {
+      console.error('Erreur recuperation stats cuisine:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Erreur lors de la recuperation des statistiques cuisine'
+      });
+    }
+  },
+
+  // === NOUVEAU : Démarrer préparation (agent cuisine) ===
+  async demarrerPreparation(req, res) {
+    try {
+      const { id } = req.params;
+      
+      const vente = await VenteResto.findById(id);
+      if (!vente) {
+        return res.status(404).json({
+          success: false,
+          error: 'Commande non trouvee'
+        });
+      }
+
+      if (vente.statut !== 'en_attente') {
+        return res.status(400).json({
+          success: false,
+          error: 'Cette commande ne peut pas etre preparee'
+        });
+      }
+
+      const resultat = await VenteResto.updateStatusAvecCuisine(id, 'en_preparation', req.user.id);
+      
+      await ajouterLog({
+        utilisateur_id: req.user.id,
+        utilisateur_nom: req.user.nom,
+        action: 'UPDATE',
+        niveau: 'INFO',
+        table_concernee: 'ventes_resto',
+        enregistrement_id: id,
+        details: `Debut de preparation de la commande #${id} par l'agent cuisine`,
+        ip_address: req.ip
+      });
+
+      res.json({
+        success: true,
+        data: resultat,
+        message: 'Preparation demarree avec succes'
+      });
+    } catch (error) {
+      console.error('Erreur demarrage preparation:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Erreur lors du demarrage de la preparation'
+      });
+    }
+  },
+
+  // === NOUVEAU : Terminer préparation (agent cuisine) ===
+  async terminerPreparation(req, res) {
+    try {
+      const { id } = req.params;
+      
+      const vente = await VenteResto.findById(id);
+      if (!vente) {
+        return res.status(404).json({
+          success: false,
+          error: 'Commande non trouvee'
+        });
+      }
+
+      if (vente.statut !== 'en_preparation') {
+        return res.status(400).json({
+          success: false,
+          error: 'Cette commande n est pas en preparation'
+        });
+      }
+
+      const resultat = await VenteResto.updateStatusAvecCuisine(id, 'en_attente_paiement');
+      
+      await ajouterLog({
+        utilisateur_id: req.user.id,
+        utilisateur_nom: req.user.nom,
+        action: 'UPDATE',
+        niveau: 'INFO',
+        table_concernee: 'ventes_resto',
+        enregistrement_id: id,
+        details: `Fin de preparation de la commande #${id}`,
+        ip_address: req.ip
+      });
+
+      res.json({
+        success: true,
+        data: resultat,
+        message: 'Preparation terminee avec succes'
+      });
+    } catch (error) {
+      console.error('Erreur fin preparation:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Erreur lors de la fin de la preparation'
       });
     }
   },
