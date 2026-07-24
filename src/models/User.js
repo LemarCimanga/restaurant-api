@@ -169,6 +169,171 @@ class User {
     return result.rows[0];
   }
 
+  // ============================================================
+  // MÉTHODES SPÉCIFIQUES POUR LE GÉRANT
+  // ============================================================
+
+  // Trouver les utilisateurs par rôle
+  static async findByRole(role) {
+    const query = `
+      SELECT id, nom, postnom, prenom, matricule, numero_telephone,
+             role, statut, photo, derniere_connexion, created_at
+      FROM utilisateurs
+      WHERE role = $1
+      ORDER BY nom ASC
+    `;
+    const result = await pool.query(query, [role]);
+    return result.rows;
+  }
+
+  // Trouver tous les agents (serveur, agent boutique, agent cuisine, caissier_resto)
+  static async findAllAgents() {
+    const query = `
+      SELECT id, nom, postnom, prenom, matricule, numero_telephone,
+             role, statut, photo, derniere_connexion, created_at
+      FROM utilisateurs
+      WHERE role IN ('serveur', 'agent boutique', 'agent cuisine', 'caissier_resto')
+      ORDER BY created_at DESC
+    `;
+    const result = await pool.query(query);
+    return result.rows;
+  }
+
+  // Compter les utilisateurs par rôle
+  static async countByRole() {
+    const query = `
+      SELECT role, COUNT(*) as total
+      FROM utilisateurs
+      WHERE role IN ('serveur', 'agent boutique', 'agent cuisine', 'caissier_resto', 'admin', 'gerant')
+      GROUP BY role
+      ORDER BY total DESC
+    `;
+    const result = await pool.query(query);
+    return result.rows;
+  }
+
+  // Statistiques des agents (actifs, suspendus, total)
+  static async getAgentsStats() {
+    const query = `
+      SELECT 
+        COUNT(*) as total,
+        COUNT(CASE WHEN statut = 'actif' THEN 1 END) as actifs,
+        COUNT(CASE WHEN statut = 'suspendu' THEN 1 END) as suspendus,
+        COUNT(CASE WHEN statut = 'archive' THEN 1 END) as archives
+      FROM utilisateurs
+      WHERE role IN ('serveur', 'agent boutique', 'agent cuisine', 'caissier_resto')
+    `;
+    const result = await pool.query(query);
+    return result.rows[0] || { total: 0, actifs: 0, suspendus: 0, archives: 0 };
+  }
+
+  // Rechercher des utilisateurs
+  static async search(searchTerm) {
+    const query = `
+      SELECT id, nom, postnom, prenom, matricule, numero_telephone,
+             role, statut, photo, derniere_connexion, created_at
+      FROM utilisateurs
+      WHERE nom ILIKE $1 
+         OR postnom ILIKE $1
+         OR prenom ILIKE $1
+         OR matricule ILIKE $1
+         OR numero_telephone ILIKE $1
+      ORDER BY nom ASC
+    `;
+    const result = await pool.query(query, [`%${searchTerm}%`]);
+    return result.rows;
+  }
+
+  // Trouver les utilisateurs créés par un gérant
+  static async findByCreator(created_by) {
+    const query = `
+      SELECT id, nom, postnom, prenom, matricule, numero_telephone,
+             role, statut, photo, derniere_connexion, created_at
+      FROM utilisateurs
+      WHERE created_by = $1
+      ORDER BY created_at DESC
+    `;
+    const result = await pool.query(query, [created_by]);
+    return result.rows;
+  }
+
+  // Mettre à jour plusieurs statuts (bloquer/débloquer en masse)
+  static async updateMultipleStatus(ids, statut) {
+    const query = `
+      UPDATE utilisateurs 
+      SET statut = $1
+      WHERE id = ANY($2::int[])
+      RETURNING id, nom, prenom, statut
+    `;
+    const result = await pool.query(query, [statut, ids]);
+    return result.rows;
+  }
+
+  // Obtenir le nombre total d'utilisateurs par statut
+  static async getStatusCounts() {
+    const query = `
+      SELECT statut, COUNT(*) as total
+      FROM utilisateurs
+      GROUP BY statut
+    `;
+    const result = await pool.query(query);
+    return result.rows;
+  }
+
+  // Vérifier si un matricule existe déjà
+  static async matriculeExists(matricule) {
+    const query = `SELECT COUNT(*) as count FROM utilisateurs WHERE matricule = $1`;
+    const result = await pool.query(query, [matricule]);
+    return parseInt(result.rows[0].count) > 0;
+  }
+
+  // Obtenir les derniers utilisateurs inscrits
+  static async getRecentUsers(limit = 10) {
+    const query = `
+      SELECT id, nom, postnom, prenom, matricule, role, statut, photo, created_at
+      FROM utilisateurs
+      ORDER BY created_at DESC
+      LIMIT $1
+    `;
+    const result = await pool.query(query, [limit]);
+    return result.rows;
+  }
+
+  // Obtenir les utilisateurs par mois (pour graphiques)
+  static async getUsersByMonth(year) {
+    const query = `
+      SELECT 
+        EXTRACT(MONTH FROM created_at) as mois,
+        COUNT(*) as total
+      FROM utilisateurs
+      WHERE EXTRACT(YEAR FROM created_at) = $1
+      GROUP BY EXTRACT(MONTH FROM created_at)
+      ORDER BY mois ASC
+    `;
+    const result = await pool.query(query, [year]);
+    return result.rows;
+  }
+
+  // Obtenir les agents avec leurs dernières connexions
+  static async getAgentsWithLastLogin() {
+    const query = `
+      SELECT 
+        id, nom, postnom, prenom, matricule, role, statut, photo,
+        derniere_connexion,
+        CASE 
+          WHEN derniere_connexion IS NULL THEN 'Jamais connecté'
+          WHEN derniere_connexion >= CURRENT_DATE - INTERVAL '7 days' THEN 'Actif cette semaine'
+          WHEN derniere_connexion >= CURRENT_DATE - INTERVAL '30 days' THEN 'Actif ce mois'
+          ELSE 'Inactif depuis plus d\'un mois'
+        END as activite
+      FROM utilisateurs
+      WHERE role IN ('serveur', 'agent boutique', 'agent cuisine', 'caissier_resto')
+      ORDER BY derniere_connexion DESC NULLS LAST
+    `;
+    const result = await pool.query(query);
+    return result.rows;
+  }
+
   static async findAll(options = {}) {
     const { limit = 50, offset = 0, role, statut } = options;
     

@@ -63,8 +63,13 @@ app.use('/api/parametres', require('./routes/parametreRoutes'));
 // Routes de l'audit
 app.use('/api/audit', require('./routes/auditRoutes'));
 
-// Routes des plats et cuisine  ← NOUVEAU
+// Routes des plats et cuisine
 app.use('/api/plats', require('./routes/platRoutes'));
+
+// ============================================================
+// ROUTES SPÉCIFIQUES AU GÉRANT  ← NOUVEAU
+// ============================================================
+app.use('/api/gerant', require('./routes/gerantRoutes'));
 
 // Route de santé (health check)
 app.get('/health', (req, res) => {
